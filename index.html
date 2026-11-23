@@ -68,6 +68,18 @@ pre{white-space:pre-wrap;word-break:break-all;background:#f7f7f7;padding:8px;bor
 .pedit2{display:flex;gap:12px;align-items:center;font-size:14px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--bord)}
 .pedit2 label{margin:0;display:flex;align-items:center;gap:4px;color:var(--txt)}
 .pedit2 input{width:auto}
+.ctiles{display:grid;gap:14px}
+.ctile{position:relative;background:var(--c);color:#fff;border-radius:22px;min-height:112px;display:flex;align-items:center;gap:18px;padding:0 24px;box-shadow:0 4px 0 rgba(0,0,0,.18);user-select:none;transition:transform .08s}
+.ctile:active,.ptile:active{transform:scale(.97)}
+.ctile .e{font-size:54px;line-height:1}.ctile .l{font-size:26px;font-weight:800;flex:1}
+.qb{background:#fff;color:var(--c,#12355b);font-weight:800;border-radius:99px;min-width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:18px;padding:0 8px;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.ctile .qb{position:static}
+.ptiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ptile{position:relative;background:#fff;border:3px solid var(--c);border-radius:20px;min-height:132px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:10px 6px;text-align:center;user-select:none;transition:transform .08s}
+.ptile .e{font-size:40px;line-height:1.1}.ptile .n{font-size:17px;font-weight:700;color:var(--txt)}.ptile .pr{font-size:15px;color:var(--c);font-weight:700}
+.ptile.sel{background:color-mix(in srgb,var(--c) 14%,#fff)}
+.ptile .qb{position:absolute;top:-10px;right:-6px;background:var(--c);color:#fff}
+.ptile .mn{position:absolute;bottom:6px;right:6px;width:40px;height:40px;border-radius:50%;background:#fff;border:2px solid var(--c);color:var(--c);font-size:26px;font-weight:800;display:flex;align-items:center;justify-content:center}
 </style>
 </head>
 <body>
@@ -96,10 +108,9 @@ const DEFAULTS = (()=>{ // issu de TARIF_BOISSONS.xlsx
   const L=[]; let o=0; const add=(cat,nom,prix,banquet)=>L.push({cat,nom,prix,banquet:!!banquet,actif:true,ordre:o++});
   ['1/2 Vittel','Perrier','Coca','Coca Zero','Fanta','Schweppes','Jus de fruit','Oasis','Autre soft'].forEach(n=>add('Soft',n,1.5));
   ['Desperados','Grim blonde','Grim brune','Blanche','Leffe blonde','Leffe brune','Leffe rubis','Pelforth brune','Stella'].forEach(n=>add('Bières',n,1.8));
-  add('Bières','Bière du mois',3);
+  add('Bières','Bière du mois',3);add('Bières','Autre bière',1.8);
   ['Vin blanc','Vin rosé','Vin rouge','Vin chaud','Porto','Autre vin'].forEach(n=>add('Vins',n,1.5));
   ['Champagne','Muscat','Pétillant','Ricard','Sangria','Whisky','Autre alcool'].forEach(n=>add('Alcools',n,3,true));
-  add('Autres','Autre',1.8);
   const m={}; L.forEach((p,i)=>m['p'+String(i+1).padStart(2,'0')]=p); return m;
 })();
 
@@ -226,9 +237,9 @@ function render(){
   foot.innerHTML='';
   if(!S.user){app.innerHTML=vLogin();return}
   const y=window.scrollY;
-  const v={home:vHome,commander:vCommander,mes:vMes,bar:vBar,stats:vStats,reglages:vReglages}[S.view]||vHome;
+  const v={home:vHome,commander:vCommander,carte:vCarte,panier:vPanier,mes:vMes,bar:vBar,stats:vStats,reglages:vReglages}[S.view]||vHome;
   app.innerHTML=v();
-  if(S.view==='commander')majPanier();
+  if(['commander','carte','panier'].includes(S.view))majPanier();
   window.scrollTo(0,y);
 }
 function back(){return `<button class="back" data-act="go" data-v="home">← Accueil</button>`}
@@ -265,7 +276,7 @@ function peutPrendre(){
 function vHome(){
   const j=S.jour||{};const ok=commandesOuvertes();
   let t='';
-  t+=`<button class="tile ${ok?'go':'off'}" data-act="go" data-v="commander"><span class="ic">🍺</span>Commander<small>${ok?'Choisir mes boissons':'Bar pas encore ouvert'}</small></button>`;
+  t+=`<button class="tile ${ok?'go':'off'}" data-act="commander"><span class="ic">🍺</span>Commander<small>${ok?'Choisir mes boissons':'Bar pas encore ouvert'}</small></button>`;
   t+=`<button class="tile" data-act="go" data-v="mes"><span class="ic">🧾</span>Mes commandes</button>`;
   if(peutPrendre())t+=`<button class="tile go" data-act="prendre"><span class="ic">🙋</span>Je tiens le bar<small>Confirmer ma présence</small></button>`;
   else if(isResp())t+=`<button class="tile" data-act="quitter"><span class="ic">🚪</span>Quitter le poste<small>Je ne tiens plus le bar</small></button>`;
@@ -277,29 +288,64 @@ function vHome(){
   return `<p>Bonjour <b>${esc(S.user.nom)}</b> ${S.user.role!=='membre'?badge(S.user.role,'bleu'):''}</p>${dayBanner()}${info}<div class="tiles">${t}</div>`;
 }
 
-/* --- Commander --- */
+/* --- Commander : 3 étapes (catégories > boissons > récapitulatif) --- */
+const CATM={Soft:{e:'🥤',c:'#1d9bd1',l:'Softs'},'Bières':{e:'🍺',c:'#d68f0a',l:'Bières'},Vins:{e:'🍷',c:'#9b2d4f',l:'Vins'},Alcools:{e:'🥂',c:'#6a4c93',l:'Alcools du banquet'},Autres:{e:'➕',c:'#6b7787',l:'Autres'}};
+function emoji(p){
+  if(p.emoji)return p.emoji;const n=norm(p.nom);
+  const M=[[/vittel|\beau\b/,'💧'],[/perrier/,'🫧'],[/coca/,'🥤'],[/fanta/,'🍊'],[/schweppes/,'🍋'],[/jus/,'🧃'],[/oasis/,'🍹'],[/blanche/,'🍻'],[/du mois/,'⭐'],[/champagne/,'🍾'],[/muscat|petillant/,'🥂'],[/ricard|whisky/,'🥃'],[/vin chaud/,'☕'],[/sangria|porto|vin/,'🍷']];
+  for(const [r,e] of M)if(r.test(n))return e;
+  return (CATM[p.cat]||{}).e||'🍽️';
+}
+function cartCount(cat){const P={};prodList().forEach(p=>P[p.id]=p);return Object.entries(S.cart).reduce((a,[id,q])=>a+(P[id]&&P[id].cat===cat?q:0),0)}
+function derniere(){
+  if(S.guest!==null)return null;
+  const c=Object.values((S.jour&&S.jour.commandes)||{}).filter(c=>c.login===S.user.login&&c.statut!=='annulee').sort((a,b)=>b.ts-a.ts);
+  return c[0]||null;
+}
 function vCommander(){
-  const inv=S.guest!==null;
   if(!commandesOuvertes())return back()+dayBanner()+`<div class="info">Les commandes ne sont pas possibles pour le moment : il faut que le bar soit ouvert et qu'un bénévole ait confirmé sa présence.</div>`;
-  let h=back()+`<h2 style="margin-top:0">${inv?'Commande pour un invité':'Ma commande'}</h2>`;
-  if(inv)h+=`<label>Nom de l'invité</label><input id="guestName" value="${esc(S.guest)}" placeholder="ex. Invité de Marie">`;
+  const inv=S.guest!==null;
+  let h=back()+`<h2 style="margin-top:0">${inv?'Commande invité · ':''}Que voulez-vous boire ?</h2>`;
+  if(derniere())h+=`<button class="btn sec" data-act="refaire" style="margin-bottom:12px">🔁 Refaire ma dernière commande</button>`;
+  h+='<div class="ctiles">';
   for(const c of CATS){
-    const L=visibleProds().filter(p=>p.cat===c);if(!L.length)continue;
-    h+=`<div class="cat">${esc(c==='Alcools'?'Alcools (banquet)':c)}</div>`;
-    for(const p of L)h+=`<div class="prod"><span class="nm">${esc(p.nom)}</span><span class="pr">${eur(p.prix)}</span>
-      <div class="qty"><button data-act="moins" data-id="${p.id}">−</button><span id="q_${p.id}">0</span><button class="p" data-act="plus" data-id="${p.id}">+</button></div></div>`;
+    if(!visibleProds().some(p=>p.cat===c))continue;
+    const m=CATM[c],k=cartCount(c);
+    h+=`<div class="ctile" role="button" style="--c:${m.c}" data-act="cat" data-c="${c}"><span class="e">${m.e}</span><span class="l">${m.l}</span>${k?`<span class="qb">${k}</span>`:''}</div>`;
+  }
+  return h+'</div>';
+}
+function vCarte(){
+  const m=CATM[S.cat]||CATM.Autres;
+  let h=`<button class="back" data-act="go" data-v="commander">← Retour aux catégories</button><h2 style="margin:0 0 10px;color:${m.c}">${m.e} ${m.l}</h2><div class="ptiles">`;
+  for(const p of visibleProds().filter(p=>p.cat===S.cat)){
+    const q=S.cart[p.id]||0;
+    h+=`<div class="ptile ${q?'sel':''}" role="button" style="--c:${m.c}" data-act="plus" data-id="${p.id}"><span class="e">${emoji(p)}</span><span class="n">${esc(p.nom)}</span><span class="pr">${eur(p.prix)}</span>${q?`<span class="qb">${q}</span><span class="mn" data-act="moins" data-id="${p.id}">−</span>`:''}</div>`;
+  }
+  return h+'</div>';
+}
+function vPanier(){
+  const P={};prodList().forEach(p=>P[p.id]=p);
+  const ids=Object.keys(S.cart).filter(id=>S.cart[id]>0&&P[id]);
+  let h=`<button class="back" data-act="go" data-v="commander">← Ajouter une boisson</button><h2 style="margin-top:0">🛒 Ma commande</h2>`;
+  if(S.guest!==null)h+=`<label>Nom de l'invité</label><input id="guestName" value="${esc(S.guest)}" placeholder="ex. Invité de Marie" style="margin-bottom:12px">`;
+  if(!ids.length)return h+`<p class="muted">Votre commande est vide.</p>`;
+  for(const id of ids){const p=P[id],q=S.cart[id];
+    h+=`<div class="prod"><span class="nm">${emoji(p)} ${esc(p.nom)}</span><span class="pr">${eur(p.prix*q)}</span>
+    <div class="qty"><button data-act="moins" data-id="${id}">−</button><span>${q}</span><button class="p" data-act="plus" data-id="${id}">+</button></div></div>`;
   }
   return h;
 }
 function lignesPanier(){
   const P={};prodList().forEach(p=>P[p.id]=p);
-  return Object.entries(S.cart).filter(([,q])=>q>0).map(([id,q])=>({n:P[id].nom,p:+P[id].prix,q}));
+  return Object.entries(S.cart).filter(([id,q])=>q>0&&P[id]).map(([id,q])=>({n:P[id].nom,p:+P[id].prix,q}));
 }
 function majPanier(){
-  for(const id in S.cart){const e=$('#q_'+id);if(e)e.textContent=S.cart[id]||0}
-  const L=lignesPanier(),tot=L.reduce((a,l)=>a+l.p*l.q,0),n=L.reduce((a,l)=>a+l.q,0);
-  $('#foot').innerHTML=`<div class="foot"><div class="in"><div class="row" style="margin-bottom:8px"><b>${n} boisson${n>1?'s':''}</b><b style="font-size:20px">${eur(tot)}</b></div>
-  <button class="btn or" data-act="envoyer" ${n?'':'disabled'}>ENVOYER LA COMMANDE</button></div></div>`;
+  const L=lignesPanier(),tot=L.reduce((a,l)=>a+l.p*l.q,0),n=L.reduce((a,l)=>a+l.q,0),pl=n>1?'s':'';
+  let f='';
+  if(S.view==='panier')f=`<div class="foot"><div class="in"><div class="row" style="margin-bottom:8px"><b>${n} boisson${pl}</b><b style="font-size:22px">${eur(tot)}</b></div><button class="btn or" data-act="envoyer" ${n?'':'disabled'}>ENVOYER LA COMMANDE</button></div></div>`;
+  else if(n&&(S.view==='commander'||S.view==='carte'))f=`<div class="foot"><div class="in"><button class="btn or" data-act="go" data-v="panier">🛒 ${n} boisson${pl} · ${eur(tot)} — Voir ma commande ➜</button></div></div>`;
+  $('#foot').innerHTML=f;
 }
 
 /* --- Mes commandes --- */
@@ -456,26 +502,30 @@ const ME=()=>({login:S.user.login,nom:S.user.nom});
 
 const ACT={
   go(d){S.view=d.v;
-    if(d.v==='home'){S.guest=null;S.cart={}}
+    if(d.v==='home'&&!lignesPanier().length)S.guest=null;
     if(d.v==='stats')S.statData=null;
     render();window.scrollTo(0,0)},
-  logout(){S.user=null;try{localStorage.removeItem('barlc_user')}catch(e){};S.view='home';S.cart={};if(S.day!==todayStr())setDay(todayStr());render()},
+  logout(){S.user=null;try{localStorage.removeItem('barlc_user')}catch(e){};S.view='home';S.cart={};S.guest=null;if(S.day!==todayStr())setDay(todayStr());render()},
   setPath(){const v=($('#mpath').value||'').trim().replace(/^\/|\/$/g,'');if(!v)return;chargerMembres(v).then(render);S.membres=null;render()},
   tab(d){S.tab=d.t;render()},
-  plus(d){S.cart[d.id]=(S.cart[d.id]||0)+1;majPanier()},
-  moins(d){S.cart[d.id]=Math.max(0,(S.cart[d.id]||0)-1);majPanier()},
+  plus(d){S.cart[d.id]=(S.cart[d.id]||0)+1;render()},
+  moins(d){S.cart[d.id]=Math.max(0,(S.cart[d.id]||0)-1);render()},
+  commander(){if(!lignesPanier().length)S.guest=null;S.view='commander';render();window.scrollTo(0,0)},
+  cat(d){S.cat=d.c;S.view='carte';render();window.scrollTo(0,0)},
+  refaire(){const c=derniere();if(!c)return;const by={};visibleProds().forEach(p=>by[p.nom]=p.id);S.cart={};
+    (c.items||[]).forEach(l=>{if(by[l.n])S.cart[by[l.n]]=(S.cart[by[l.n]]||0)+l.q});S.view='panier';render();window.scrollTo(0,0)},
   invite(){S.guest='';S.cart={};S.view='commander';render()},
   async envoyer(){
     const L=lignesPanier();if(!L.length)return;
     let nom=S.user.nom,login=S.user.login;
-    if(S.guest!==null){nom=($('#guestName').value||'').trim();if(!nom){toast("Indiquez le nom de l'invité");return}login='invite'}
+    if(S.guest!==null){nom=(S.guest||'').trim();if(!nom){toast("Indiquez le nom de l'invité");return}login='invite'}
     if(!commandesOuvertes()){toast("Le bar n'accepte pas de commande pour le moment");return}
     const total=Math.round(L.reduce((a,l)=>a+l.p*l.q,0)*100)/100;
     try{
       const c=await db.ref(`${R}/jours/${S.day}/compteur`).transaction(x=>(x||0)+1);
       const num=c.snapshot.val();
       await db.ref(`${R}/jours/${S.day}/commandes`).push({num,login,nom,items:L,total,statut:'envoyee',ts:SV.TIMESTAMP,par:S.user.login});
-      S.cart={};const wasGuest=S.guest!==null;S.guest=null;
+      S.cart={};const wasGuest=S.guest!==null;S.guest=null;S.cat=null;
       toast('Commande #'+num+' envoyée ✔');S.view=wasGuest?'bar':'mes';render();
     }catch(e){toast('Échec de l\'envoi : '+e.message)}
   },
@@ -527,6 +577,7 @@ const CHG={
 };
 document.addEventListener('click',e=>{const t=e.target.closest('[data-act]');if(!t)return;const f=ACT[t.dataset.act];if(f){e.preventDefault();f(t.dataset)}});
 document.addEventListener('change',e=>{const t=e.target.closest('[data-chg]');if(t&&CHG[t.dataset.chg])CHG[t.dataset.chg](t)});
+document.addEventListener('input',e=>{if(e.target.id==='guestName')S.guest=e.target.value});
 document.addEventListener('submit',e=>{
   if(e.target.id!=='fLogin')return;e.preventDefault();
   const l=norm($('#lg').value.trim()),p=$('#pw').value;
