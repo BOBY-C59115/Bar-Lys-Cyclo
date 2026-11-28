@@ -241,6 +241,7 @@ function render(){
   app.innerHTML=v();
   if(['commander','carte','panier'].includes(S.view))majPanier();
   window.scrollTo(0,y);
+  gardeEcran();
 }
 function back(){return `<button class="back" data-act="go" data-v="home">← Accueil</button>`}
 function badge(t,c){return `<span class="badge b-${c}">${t}</span>`}
@@ -585,6 +586,20 @@ document.addEventListener('submit',e=>{
   if(!m){toast('Identifiant ou mot de passe incorrect');return}
   S.user={login:m.login,nom:m.nom,role:m.role};saveSession();S.view='home';S.day=todayStr();subscribe();render();
 });
+
+/* ---------- écran toujours allumé pour le bénévole du bar ---------- */
+let wl=null,wlBusy=false;
+async function gardeEcran(){
+  if(!('wakeLock' in navigator)||wlBusy)return;
+  const veut=!!(S.user&&isResp());
+  wlBusy=true;
+  try{
+    if(veut&&!wl){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>{wl=null})}
+    else if(!veut&&wl){await wl.release();wl=null}
+  }catch(e){}
+  wlBusy=false;
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')gardeEcran()});
 
 /* ---------- démarrage ---------- */
 (async function(){
