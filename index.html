@@ -156,11 +156,12 @@ function parseMembres(val){
   for(const [k,v] of ent){
     if(!v||typeof v!=='object')continue;
     const pwd=pick(v,['password','motdepasse','mdp','pass','pwd','mot_de_passe','mot de passe']);
-    if(pwd==null)continue;
+    const pwdH=v.pwdH||null;
+    if(pwd==null&&!pwdH)continue;
     const login=String(pick(v,['login','identifiant','id','user','username'])||k);
     const prenom=pick(v,['prenom']),nom=pick(v,['nom']),pseudo=pick(v,['pseudo']);
     const role=norm(pick(v,['role','profil','statut','type','droits'])||'');
-    out.push({login,pwd:String(pwd),role:/admin/.test(role)?'admin':/superv/.test(role)?'superviseur':'membre',
+    out.push({login,pwd:pwd==null?null:String(pwd),pwdH,pseudo:pseudo||'',tel:String(pick(v,['tel','telephone'])||''),role:/admin/.test(role)?'admin':/superv/.test(role)?'superviseur':'membre',
       nom:(prenom||nom)?[prenom,nom].filter(Boolean).join(' '):(pseudo||login)});
   }
   return out;
@@ -579,10 +580,17 @@ const CHG={
 document.addEventListener('click',e=>{const t=e.target.closest('[data-act]');if(!t)return;const f=ACT[t.dataset.act];if(f){e.preventDefault();f(t.dataset)}});
 document.addEventListener('change',e=>{const t=e.target.closest('[data-chg]');if(t&&CHG[t.dataset.chg])CHG[t.dataset.chg](t)});
 document.addEventListener('input',e=>{if(e.target.id==='guestName')S.guest=e.target.value});
-document.addEventListener('submit',e=>{
+async function hashPw(login,pwd){try{const b=new TextEncoder().encode('lc|'+String(login).toUpperCase()+'|'+pwd);const d=await crypto.subtle.digest('SHA-256',b);return[...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,'0')).join('')}catch(e){return null}}
+const telN=t=>{let d=String(t||'').replace(/\D/g,'');if(d.startsWith('0033'))d=d.slice(4);else if(d.startsWith('33')&&d.length>=11)d=d.slice(2);return d.replace(/^0/,'')};
+document.addEventListener('submit',async e=>{
   if(e.target.id!=='fLogin')return;e.preventDefault();
-  const l=norm($('#lg').value.trim()),p=$('#pw').value;
-  const m=(S.membres||[]).find(x=>norm(x.login)===l&&x.pwd===p);
+  const raw=$('#lg').value.trim(),l=norm(raw),p=$('#pw').value,tn=telN(raw);
+  let m=null;
+  for(const x of (S.membres||[])){
+    if(!(norm(x.login)===l||(x.pseudo&&norm(x.pseudo)===l)||(tn.length>=9&&telN(x.tel)===tn)))continue;
+    if(x.pwd!=null&&x.pwd===p){m=x;break}
+    if(x.pwdH){const h=await hashPw(x.login,p);if(h&&h===x.pwdH){m=x;break}}
+  }
   if(!m){toast('Identifiant ou mot de passe incorrect');return}
   S.user={login:m.login,nom:m.nom,role:m.role};saveSession();S.view='home';S.day=todayStr();subscribe();render();
 });
